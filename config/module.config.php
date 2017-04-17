@@ -50,6 +50,19 @@ return [
     'zf-content-validation' => [
         'methods_without_bodies' => [],
         /*
+         * Use this config to validate parameters from routes
+         *
+         * Only configured routes and parameters will validated
+         *
+         * Format follows:
+         *
+         * '<route name>' => [
+         *  '<route.param.1>',
+         *  '<route.param.2>'
+         * ]
+         */
+        'validate_route_params' => []
+        /*
          * An array of controller service name => config pairs.
          *
          * The configuration *must* include at least *one* of:

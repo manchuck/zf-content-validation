@@ -62,6 +62,11 @@ class ContentValidationListener implements ListenerAggregateInterface, EventMana
     ];
 
     /**
+     * @var array
+     */
+    protected $injectRouteParams = [];
+
+    /**
      * Map of REST controllers => route identifier names
      *
      * Used to determine if we have a collection or an entity, for purposes of validation.
@@ -88,6 +93,10 @@ class ContentValidationListener implements ListenerAggregateInterface, EventMana
             foreach ($config['methods_without_bodies'] as $method) {
                 $this->addMethodWithoutBody($method);
             }
+        }
+
+        if (isset($config['validate_route_params']) && is_array($config['validate_route_params'])) {
+            $this->setRouteParamsToValidate($config['validate_route_params']);
         }
     }
 
@@ -206,6 +215,7 @@ class ContentValidationListener implements ListenerAggregateInterface, EventMana
             $data = [];
         }
 
+        $this->addRouteParams($data, $routeMatches);
         $isCollection = $this->isCollection($controllerService, $data, $routeMatches, $request);
 
         $files = $request->getFiles();
@@ -323,6 +333,15 @@ class ContentValidationListener implements ListenerAggregateInterface, EventMana
     public function addMethodWithoutBody($method)
     {
         $this->methodsWithoutBodies[] = $method;
+    }
+
+    /**
+     * Sets which parameters from routes should be injected
+     * @param array $routes
+     */
+    public function setRouteParamsToValidate(array $routes)
+    {
+        $this->injectRouteParams = $routes;
     }
 
     /**
@@ -481,6 +500,22 @@ class ContentValidationListener implements ListenerAggregateInterface, EventMana
             return new ApiProblemResponse(
                 new ApiProblem(400, 'Unrecognized field "' . $matches['field'] . '"')
             );
+        }
+    }
+
+    /**
+     * @param array $data
+     * @param RouteMatch|V2RouteMatch $routeMatch
+     */
+    protected function addRouteParams(&$data, $routeMatch)
+    {
+        $routeName = $routeMatch->getMatchedRouteName();
+        if (! isset($this->injectRouteParams[$routeName])) {
+            return;
+        }
+
+        foreach ($this->injectRouteParams[$routeName] as $routeParam) {
+            $data[$routeParam] = $routeMatch->getParam($routeParam);
         }
     }
 }

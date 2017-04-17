@@ -1759,7 +1759,6 @@ class ContentValidationListenerTest extends TestCase
         $this->assertEquals('abc', $dataParams->getBodyParam('foo'));
     }
 
-
     /**
      * @group 29
      */
@@ -1801,6 +1800,7 @@ class ContentValidationListenerTest extends TestCase
         $listener->onRoute($event);
         $this->assertEquals(' abc ', $dataParams->getBodyParam('foo'));
     }
+
 
     /**
      * @group 29
@@ -2217,7 +2217,6 @@ class ContentValidationListenerTest extends TestCase
         $this->assertEquals('Validation failed', $response->getApiProblem()->detail);
     }
 
-
     /**
      * @group event
      */
@@ -2279,6 +2278,7 @@ class ContentValidationListenerTest extends TestCase
         $this->assertEquals('Validation failed', $response->getApiProblem()->detail);
     }
 
+
     public function indexedFields()
     {
         return [
@@ -2337,5 +2337,119 @@ class ContentValidationListenerTest extends TestCase
     public function testEventNameShouldBeResetToOriginalOnCompletionOfListener($event)
     {
         $this->assertEquals('route', $event->getName());
+    }
+
+    public function testValidatesBothRouteAndBodyParams()
+    {
+        $services = new ServiceManager();
+        $factory  = new InputFilterFactory();
+
+        $services->setService('FooValidator', $factory->createInputFilter([
+            'from-route' => [
+                'name' => 'from-route',
+                'required' => true,
+                'validators' => [
+                    ['name' => 'Digits'],
+                ],
+            ],
+            'from-body' => [
+                'name' => 'from-body',
+                'required' => true,
+                'validators' => [
+                    ['name' => 'Digits'],
+                ],
+            ],
+        ]));
+        $listener = new ContentValidationListener([
+            'Foo' => ['input_filter' => 'FooValidator'],
+            'validate_route_params' => [
+                'api.rest.test' => ['from-route']
+            ]
+        ], $services);
+
+        $request = new HttpRequest();
+        $request->setMethod('POST');
+
+        /** @var RouteMatch|V2RouteMatch $matches */
+        $matches = $this->createRouteMatch(['controller' => 'Foo']);
+
+        $matches->setMatchedRouteName('api.rest.test');
+        $matches->setParam('from-route', 123);
+        $dataParams = new ParameterDataContainer();
+        $dataParams->setBodyParams([
+            'from-body' => 456,
+        ]);
+
+        $event   = new MvcEvent();
+        $event->setName('route');
+        $event->setRequest($request);
+        $event->setRouteMatch($matches);
+        $event->setParam('ZFContentNegotiationParameterData', $dataParams);
+
+        $this->assertNull($listener->onRoute($event));
+        $this->assertNull($event->getResponse());
+    }
+
+    public function testValidatesFailsWhenMissingRouteParams()
+    {
+        $services = new ServiceManager();
+        $factory  = new InputFilterFactory();
+
+        $services->setService('FooValidator', $factory->createInputFilter([
+            'from-route' => [
+                'name' => 'from-route',
+                'required' => true,
+                'validators' => [
+                    ['name' => 'Digits'],
+                ],
+            ],
+            'from-body' => [
+                'name' => 'from-body',
+                'required' => true,
+                'validators' => [
+                    ['name' => 'Digits'],
+                ],
+            ],
+        ]));
+        $listener = new ContentValidationListener([
+            'Foo' => ['input_filter' => 'FooValidator'],
+            'validate_route_params' => [
+                'api.rest.test' => ['from-route']
+            ]
+        ], $services);
+
+        $request = new HttpRequest();
+        $request->setMethod('POST');
+
+        /** @var RouteMatch|V2RouteMatch $matches */
+        $matches = $this->createRouteMatch(['controller' => 'Foo']);
+
+        $matches->setMatchedRouteName('api.rest.test');
+        $dataParams = new ParameterDataContainer();
+        $dataParams->setBodyParams([
+            'from-body' => 456,
+        ]);
+
+        $event   = new MvcEvent();
+        $event->setName('route');
+        $event->setRequest($request);
+        $event->setRouteMatch($matches);
+        $event->setParam('ZFContentNegotiationParameterData', $dataParams);
+
+
+        $result = $listener->onRoute($event);
+
+        $this->assertInstanceOf(ApiProblemResponse::class, $result);
+        $apiProblemData = $result->getApiProblem()->toArray();
+        $this->assertEquals(422, $apiProblemData['status']);
+        $this->assertContains('Failed Validation', $apiProblemData['detail']);
+        $this->assertEquals(
+            [
+                'from-route' => [
+                    'isEmpty' => 'Value is required and can\'t be empty'
+                ]
+            ],
+            $apiProblemData['validation_messages']
+        );
     }
 }
